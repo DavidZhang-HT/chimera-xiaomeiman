@@ -4,6 +4,7 @@ import { mouthWords } from "../mouthWords.ts";
 import { V } from "../colors.ts";
 import { PRESETS, presetOf } from "../body.ts";
 import type { BodyName } from "../../worklet/protocol.ts";
+import { TIMBRE_FILTERS, getTimbreFilter } from "../timbre.ts";
 import { Keys } from "./Keys.tsx";
 import { PianoRoll } from "./PianoRoll.tsx";
 import { SpectrumView } from "./SpectrumView.tsx";
@@ -86,10 +87,11 @@ function Lyrics() {
 function SongControls() {
   const source = useStore((s) => s.source);
   const setSource = useStore((s) => s.setSource);
-  const epilarynx = useStore((s) => s.artic.epilarynx);
+  const artic = useStore((s) => s.artic);
   const setArtic = useStore((s) => s.setArtic);
   const vibrato = useSing((s) => s.vibrato);
   const setVibrato = useSing((s) => s.setVibrato);
+  const signedCm = (v: number) => ({ value: `${v >= 0 ? "+" : ""}${v.toFixed(2)}`, unit: "cm" });
   return (
     <EncoderPages
       label="Song voice"
@@ -101,15 +103,43 @@ function SongControls() {
             { label: "Rate", value: source.vibratoRate, min: 3.5, max: 7.5, onChange: (v) => setSource({ vibratoRate: v }), format: (v) => ({ value: v.toFixed(1), unit: "Hz" }) },
             { label: "Breathy", value: source.breathiness, min: 0, max: 1, onChange: (v) => setSource({ breathiness: v }), format: (v) => ({ value: String(Math.round(v * 100)), unit: "%" }) },
             // the singer's ring narrows the tube just above the folds, adding the bright band near 3 kHz
-            { label: "Ring", value: epilarynx, min: 0, max: 1, onChange: (v) => setArtic({ epilarynx: v }), format: (v) => ({ value: String(Math.round(v * 100)), unit: "%" }) },
+            { label: "Ring", value: artic.epilarynx, min: 0, max: 1, onChange: (v) => setArtic({ epilarynx: v }), format: (v) => ({ value: String(Math.round(v * 100)), unit: "%" }) },
           ],
         },
         {
-          name: "Tone",
-          encoders: [{ label: "Bright", value: source.brightness, min: 0, max: 1, onChange: (v) => setSource({ brightness: v }), format: (v) => ({ value: String(Math.round(v * 100)), unit: "%" }) }],
+          name: "Glottis",
+          encoders: [
+            { label: "Bright", value: source.brightness, min: 0, max: 1, onChange: (v) => setSource({ brightness: v }), format: (v) => ({ value: String(Math.round(v * 100)), unit: "%" }) },
+            { label: "Pressed", value: source.tension, min: 0, max: 1, onChange: (v) => setSource({ tension: v }), format: (v) => ({ value: String(Math.round(v * 100)), unit: "%" }) },
+            { label: "Rough", value: source.roughness, min: 0, max: 1, onChange: (v) => setSource({ roughness: v }), format: (v) => ({ value: String(Math.round(v * 100)), unit: "%" }) },
+            { label: "Breath", value: source.pressure, min: 4, max: 16, onChange: (v) => setSource({ pressure: v }), format: (v) => ({ value: v.toFixed(1), unit: "cmH₂O" }) },
+          ],
+        },
+        {
+          name: "Posture",
+          encoders: [
+            { label: "Larynx", value: artic.larynx, min: -1.2, max: 1.2, onChange: (v) => setArtic({ larynx: v }), format: signedCm },
+            { label: "Pharynx", value: artic.root, min: -0.8, max: 0.8, onChange: (v) => setArtic({ root: v }), format: signedCm },
+            { label: "Smile", value: artic.lipWidth, min: 0, max: 1, onChange: (v) => setArtic({ lipWidth: v }), format: (v) => ({ value: String(Math.round(v * 100)), unit: "%" }) },
+            { label: "Husky", value: artic.ventricular, min: 0, max: 1, onChange: (v) => setArtic({ ventricular: v }), format: (v) => ({ value: String(Math.round(v * 100)), unit: "%" }) },
+          ],
         },
       ]}
     />
+  );
+}
+
+function TimbreFilterChips() {
+  const active = useStore((s) => s.timbreFilter);
+  const setTimbreFilter = useStore((s) => s.setTimbreFilter);
+  return (
+    <div className="demo-songs" role="group" aria-label="Input timbre filters">
+      {TIMBRE_FILTERS.map((f) => (
+        <Chip key={f.id} on={active === f.id} onClick={() => setTimbreFilter(f.id)} title={f.desc}>
+          {f.shortLabel}
+        </Chip>
+      ))}
+    </div>
   );
 }
 
@@ -172,6 +202,8 @@ function DemoSongs() {
 /** Sing mode's right column: the piano roll, the lyrics, the spectrum with the ring, the song voice, the keys. */
 export function SingRight() {
   const ring = useStore((s) => s.artic.epilarynx >= RING - 0.05);
+  const timbreId = useStore((s) => s.timbreFilter);
+  const timbreLabel = timbreId ? getTimbreFilter(timbreId).label : "Custom";
   const next = useSing((s) => (s.demo ? null : (s.syllables[s.cursor]?.text ?? null)));
   return (
     <div className="right right-sing">
@@ -184,7 +216,7 @@ export function SingRight() {
       <Screen className="s-spec" title="Spectrum" sub={ring ? "Ring on" : ""}>
         <SpectrumView ring={ring} />
       </Screen>
-      <Screen className="s-voice" title="Voice">
+      <Screen className="s-voice" title="Voice" sub={timbreLabel} tools={<TimbreFilterChips />}>
         <SongControls />
       </Screen>
       <Screen className="s-keys" title="Keys" sub={next ? `Next: ${next}` : ""}>

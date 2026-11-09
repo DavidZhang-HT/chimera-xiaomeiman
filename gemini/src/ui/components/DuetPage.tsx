@@ -29,6 +29,7 @@ import { g2p } from "../speech.ts";
 import { lyricsToSyllables } from "../../wasm/engine.ts";
 import { sungWords, wordAt, type Melody, type SungWords } from "../../show/words.ts";
 import type { OverlayFn } from "./AnatomyView.tsx";
+import { TIMBRE_FILTERS, getTimbreFilter, type TimbreFilterId } from "../timbre.ts";
 
 interface ShowFile {
   title: string;
@@ -42,7 +43,7 @@ interface ShowFile {
 interface Loaded {
   show: ShowFile;
   mixAudio: ArrayBuffer;
-  voices: { name: string; track: TeleTrack; words: SungWords | null; audio: ArrayBuffer }[];
+  voices: { name: string; audioFile?: string; track: TeleTrack; words: SungWords | null; audio: ArrayBuffer }[];
 }
 
 /** the heads as the face screen shows them by default, less the measurement labels */
@@ -62,6 +63,7 @@ export function DuetPage(props: { id: string }) {
   const [transport, setTransport] = useState<Transport | null>(null);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [selectedVoice, setSelectedVoice] = useState<number | "all">(0);
+  const [timbreId, setTimbreId] = useState<TimbreFilterId>("warm_pop");
   const [error, setError] = useState<string | null>(null);
   const [, setTick] = useState(0);
 
@@ -92,7 +94,7 @@ export function DuetPage(props: { id: string }) {
           return null;
         }
       });
-      const voices = show.voices.map((v, i) => ({ name: v.name, track: new TeleTrack(teles[i]), words: words[i], audio: voiceAudios[i] }));
+      const voices = show.voices.map((v, i) => ({ name: v.name, audioFile: v.audio, track: new TeleTrack(teles[i]), words: words[i], audio: voiceAudios[i] }));
       await transport.load(voices[0]?.audio.slice(0) ?? mixAudio.slice(0));
       if (live) setLoaded({ show, mixAudio, voices });
     })().catch((e: unknown) => live && setError(e instanceof Error ? e.message : String(e)));
@@ -101,12 +103,47 @@ export function DuetPage(props: { id: string }) {
     };
   }, [base, transport]);
 
+  const audioCache = useRef<Map<string, ArrayBuffer>>(new Map());
+
+  const loadVoiceTimbreBuffer = async (choice: number | "all", tId: TimbreFilterId): Promise<ArrayBuffer | null> => {
+    if (!loaded) return null;
+    const idx = choice === "all" ? 2 : choice;
+    const v = loaded.voices[idx];
+    if (!v) return loaded.mixAudio;
+    const stem = v.audioFile ? v.audioFile.replace(/\.wav$/i, "") : "";
+    if (stem) {
+      const url = `${base}${stem}-${tId}.wav`;
+      const cached = audioCache.current.get(url);
+      if (cached) return cached;
+      try {
+        const buf = await fetchOk(url).then((r) => r.arrayBuffer());
+        audioCache.current.set(url, buf);
+        return buf;
+      } catch {
+        // fallback to default voice audio
+      }
+    }
+    return choice === "all" ? loaded.mixAudio : v.audio;
+  };
+
   const selectVoice = async (choice: number | "all") => {
     setSelectedVoice(choice);
     if (!transport || !loaded) return;
     const wasPlaying = transport.isPlaying;
     const curTime = transport.time();
-    const buf = choice === "all" ? loaded.mixAudio : loaded.voices[choice]?.audio ?? loaded.mixAudio;
+    const buf = (await loadVoiceTimbreBuffer(choice, timbreId)) ?? loaded.mixAudio;
+    await transport.load(buf.slice(0));
+    transport.seek(curTime);
+    if (wasPlaying) transport.play();
+  };
+
+  const selectTimbre = async (tId: TimbreFilterId) => {
+    setTimbreId(tId);
+    if (!transport || !loaded) return;
+    transport.setTimbreEq(getTimbreFilter(tId).eq);
+    const wasPlaying = transport.isPlaying;
+    const curTime = transport.time();
+    const buf = (await loadVoiceTimbreBuffer(selectedVoice, tId)) ?? loaded.mixAudio;
     await transport.load(buf.slice(0));
     transport.seek(curTime);
     if (wasPlaying) transport.play();
@@ -138,28 +175,45 @@ export function DuetPage(props: { id: string }) {
         <span className="wordmark">Chimera</span>
         <span className="duet-title">{title}</span>
         {loaded && loaded.voices.length > 1 && (
-          <div className="segmented" role="radiogroup" aria-label="Voice selection" style={{ marginLeft: "auto" }}>
-            {loaded.voices.map((v, i) => (
+          <div style={{ display: "flex", gap: "8px", marginLeft: "auto", flexWrap: "wrap", alignItems: "center" }}>
+            <div className="segmented" role="radiogroup" aria-label="Timbre filter">
+              {TIMBRE_FILTERS.map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  role="radio"
+                  title={f.desc}
+                  aria-checked={timbreId === f.id}
+                  className={timbreId === f.id ? "on" : ""}
+                  onClick={() => void selectTimbre(f.id)}
+                >
+                  {f.shortLabel}
+                </button>
+              ))}
+            </div>
+            <div className="segmented" role="radiogroup" aria-label="Voice selection">
+              {loaded.voices.map((v, i) => (
+                <button
+                  key={v.name}
+                  type="button"
+                  role="radio"
+                  aria-checked={selectedVoice === i}
+                  className={selectedVoice === i ? "on" : ""}
+                  onClick={() => void selectVoice(i)}
+                >
+                  {v.name}
+                </button>
+              ))}
               <button
-                key={v.name}
                 type="button"
                 role="radio"
-                aria-checked={selectedVoice === i}
-                className={selectedVoice === i ? "on" : ""}
-                onClick={() => void selectVoice(i)}
+                aria-checked={selectedVoice === "all"}
+                className={selectedVoice === "all" ? "on" : ""}
+                onClick={() => void selectVoice("all")}
               >
-                {v.name}
+                四声部同屏 · All
               </button>
-            ))}
-            <button
-              type="button"
-              role="radio"
-              aria-checked={selectedVoice === "all"}
-              className={selectedVoice === "all" ? "on" : ""}
-              onClick={() => void selectVoice("all")}
-            >
-              四声部同屏 · All
-            </button>
+            </div>
           </div>
         )}
       </header>

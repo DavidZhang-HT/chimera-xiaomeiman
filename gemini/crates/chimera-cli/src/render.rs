@@ -488,6 +488,7 @@ fn render_tracked(v: &mut HumanVoice, out: &mut [f32], artic: bool, tele: bool) 
 pub fn notes(ctx: &Ctx, a: &[String]) -> Result<(), String> {
     let mut artic_out: Option<String> = None;
     let mut tele_out: Option<String> = None;
+    let mut timbre_opt: Option<String> = None;
     let mut rest = Vec::new();
     let mut it = a.iter();
     while let Some(x) = it.next() {
@@ -495,19 +496,21 @@ pub fn notes(ctx: &Ctx, a: &[String]) -> Result<(), String> {
             artic_out = Some(it.next().ok_or("--artic needs a file")?.clone());
         } else if x == "--tele" {
             tele_out = Some(it.next().ok_or("--tele needs a file")?.clone());
+        } else if x == "--timbre" {
+            timbre_opt = Some(it.next().ok_or("--timbre needs a preset name")?.clone());
         } else {
             rest.push(x.clone());
         }
     }
     let a = &rest[..];
-    let input = a.first().ok_or("render notes <in.json> <out> [male|female|child] [--artic tracks.json] [--tele voice.tele]")?;
+    let input = a.first().ok_or("render notes <in.json> <out> [male|female|child] [--timbre id] [--artic tracks.json] [--tele voice.tele]")?;
     let out_name = wav_name(arg(a, 1, "out/notes"));
     let body_name = arg(a, 2, "male");
     let b = body(body_name)?;
     let text = std::fs::read_to_string(input).map_err(|e| format!("{input}: {e}"))?;
     let j: serde_json::Value = serde_json::from_str(&text).map_err(|e| format!("{input}: {e}"))?;
     let bpm = j["bpm"].as_f64().ok_or("bpm missing")?;
-    let vibrato = j["vibrato"].as_f64().unwrap_or(35.0);
+    let mut vibrato = j["vibrato"].as_f64().unwrap_or(35.0);
     let raw: Vec<[f64; 2]> = serde_json::from_value(j["notes"].clone()).map_err(|e| format!("notes: {e}"))?;
     let g = g2p()?;
     let syl = lyrics_to_syllables(j["lyrics"].as_str().ok_or("lyrics missing")?, &g);
@@ -527,6 +530,43 @@ pub fn notes(ctx: &Ctx, a: &[String]) -> Result<(), String> {
         tension: Some(0.55),
         ..Default::default()
     });
+    if let Some(tid) = timbre_opt.as_deref() {
+        use chimera::anatomy::human::ArticPatch;
+        let (sp, ap, vib) = match tid {
+            "warm_pop" => (
+                SourcePatch { pressure: Some(8.6), tension: Some(0.44), brightness: Some(0.36), breathiness: Some(0.26), roughness: Some(0.08), fry: Some(0.0), vibrato_rate: Some(5.6), drift: Some(6.5), glide: Some(0.065), ..Default::default() },
+                ArticPatch::default().with(ArticKey::Larynx, -0.28).with(ArticKey::Root, 0.24).with(ArticKey::Epilarynx, 0.32).with(ArticKey::Ventricular, 0.04).with(ArticKey::LipWidth, 0.62),
+                32.0,
+            ),
+            "sweet_clear" => (
+                SourcePatch { pressure: Some(8.4), tension: Some(0.54), brightness: Some(0.56), breathiness: Some(0.20), roughness: Some(0.06), fry: Some(0.0), vibrato_rate: Some(5.9), drift: Some(5.0), glide: Some(0.05), ..Default::default() },
+                ArticPatch::default().with(ArticKey::Larynx, 0.38).with(ArticKey::Root, 0.12).with(ArticKey::Epilarynx, 0.48).with(ArticKey::Ventricular, 0.0).with(ArticKey::LipWidth, 0.84),
+                26.0,
+            ),
+            "bel_canto" => (
+                SourcePatch { pressure: Some(11.2), tension: Some(0.65), brightness: Some(0.62), breathiness: Some(0.06), roughness: Some(0.07), fry: Some(0.0), vibrato_rate: Some(5.8), drift: Some(4.5), glide: Some(0.055), ..Default::default() },
+                ArticPatch::default().with(ArticKey::Larynx, -0.68).with(ArticKey::Root, 0.42).with(ArticKey::Epilarynx, 0.82).with(ArticKey::Ventricular, 0.0).with(ArticKey::LipWidth, 0.36),
+                52.0,
+            ),
+            "intimate_airy" => (
+                SourcePatch { pressure: Some(6.8), tension: Some(0.32), brightness: Some(0.16), breathiness: Some(0.52), roughness: Some(0.11), fry: Some(0.03), vibrato_rate: Some(5.2), drift: Some(7.5), glide: Some(0.08), ..Default::default() },
+                ArticPatch::default().with(ArticKey::Larynx, -0.18).with(ArticKey::Root, 0.15).with(ArticKey::Epilarynx, 0.14).with(ArticKey::Ventricular, 0.08).with(ArticKey::LipWidth, 0.54),
+                18.0,
+            ),
+            "husky_soul" => (
+                SourcePatch { pressure: Some(9.6), tension: Some(0.60), brightness: Some(0.48), breathiness: Some(0.32), roughness: Some(0.36), fry: Some(0.14), vibrato_rate: Some(5.4), drift: Some(8.0), glide: Some(0.07), ..Default::default() },
+                ArticPatch::default().with(ArticKey::Larynx, -0.35).with(ArticKey::Root, 0.10).with(ArticKey::Epilarynx, 0.56).with(ArticKey::Ventricular, 0.36).with(ArticKey::LipWidth, 0.48),
+                36.0,
+            ),
+            _ => (SourcePatch::default(), ArticPatch::default(), vibrato),
+        };
+        v.set_source(&sp);
+        v.artic.snap(&ap);
+        let x = v.artic.x;
+        v.airway.apply(&x, 0.0);
+        v.airway.net.snap_to_targets();
+        vibrato = vib;
+    }
     let (mut t, mut k, mut end) = (t0, 0usize, 0.0f64);
     let mut phrase: Vec<SungNote> = Vec::new();
     let mut start = t;

@@ -6,9 +6,10 @@ import { defaultF0, PRESETS, sameBody, type BodyMix } from "./body.ts";
 import { creatureById } from "../wasm/engine.ts";
 import type { ParamDef } from "../wasm/types.ts";
 import { BEAT_PRESETS, BASS_NOTE, beatReady, parseBeat, type BeatStep } from "../wasm/engine.ts";
-import { singNoteOn, singNoteOff, stopSinging, ensureDictionary } from "./singing.ts";
+import { singNoteOn, singNoteOff, stopSinging, ensureDictionary, useSing } from "./singing.ts";
 import { stopSpeaking } from "./speech.ts";
 import { connectMidi, disconnectMidi, type MidiStatus } from "./midi.ts";
+import { getTimbreFilter, type TimbreFilterId } from "./timbre.ts";
 
 export type Mode = "play" | "speak" | "sing" | "bestiary" | "beatbox";
 
@@ -75,6 +76,8 @@ interface State {
   previewBody: (b: BodyMix) => void;
   setSource: (v: Partial<VoiceSource>) => void;
   setArtic: (v: Partial<HumanArtic>, tipFree?: boolean) => void;
+  timbreFilter: TimbreFilterId | null;
+  setTimbreFilter: (id: TimbreFilterId) => void;
   setVolume: (v: number) => void;
   setHold: (h: boolean) => void;
   /** a key went down (velocity 1..127; the on-screen keys send 96) */
@@ -117,15 +120,18 @@ let session = 0;
 
 const FIRST_BEAT = BEAT_PRESETS[0];
 
-export const useStore = create<State>((set, get) => ({
+export const useStore = create<State>((set, get) => {
+  const initTimbre = getTimbreFilter("warm_pop");
+  return {
   started: false,
   starting: false,
   startError: null,
   body: PRESETS.child,
-  source: { ...DEFAULT_SOURCE, f0: defaultF0(PRESETS.child) },
+  timbreFilter: "warm_pop",
+  source: { ...DEFAULT_SOURCE, ...initTimbre.source, f0: defaultF0(PRESETS.child) },
   artic: (() => {
     const tip = restTip(NEUTRAL.jaw, NEUTRAL.tbX, NEUTRAL.tbY);
-    return { ...NEUTRAL, ttX: tip.x, ttY: tip.y };
+    return { ...NEUTRAL, ...initTimbre.artic, ttX: tip.x, ttY: tip.y };
   })(),
   tipFree: true,
   volume: 0.8,
@@ -248,6 +254,7 @@ export const useStore = create<State>((set, get) => ({
         if (!sameBody(s.body, PRESETS.male)) engine.setBody(s.body);
         engine.setSource(s.source);
         engine.setArtic(s.artic, s.tipFree);
+        if (s.timbreFilter) engine.setTimbreEq(getTimbreFilter(s.timbreFilter).eq);
         if (s.mode === "bestiary") engine.setCreature(s.creature, s.cparams[s.creature]);
         if (s.mode === "beatbox") {
           engine.setMic(s.mic);
@@ -281,6 +288,18 @@ export const useStore = create<State>((set, get) => ({
   setArtic: (v, tipFree) => {
     set((s) => ({ artic: { ...s.artic, ...v }, tipFree: tipFree ?? s.tipFree }));
     engine.setArtic(v, tipFree);
+  },
+  setTimbreFilter: (id) => {
+    const preset = getTimbreFilter(id);
+    set((s) => ({
+      timbreFilter: id,
+      source: { ...s.source, ...preset.source },
+      artic: { ...s.artic, ...preset.artic },
+    }));
+    engine.setSource(preset.source);
+    engine.setArtic(preset.artic);
+    engine.setTimbreEq(preset.eq);
+    useSing.getState().setVibrato(preset.vibrato);
   },
   setVolume: (v) => {
     set({ volume: v });
@@ -364,4 +383,5 @@ export const useStore = create<State>((set, get) => ({
       if (get().midi.status === "connecting") set({ midi: { status: "denied", inputs: [] } });
     });
   },
-}));
+  };
+});

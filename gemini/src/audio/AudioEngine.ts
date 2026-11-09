@@ -8,6 +8,7 @@ import type { ToWorklet, FromWorklet, TelemetryMessage, PlannedMessage, Creature
 import type { BodyMix } from "../wasm/types.ts";
 import type { HumanArtic } from "../wasm/types.ts";
 import type { VoiceSource } from "../wasm/types.ts";
+import { getTimbreFilter, type TimbreFilterPreset } from "../ui/timbre.ts";
 
 type Listener = (t: TelemetryMessage) => void;
 
@@ -23,6 +24,13 @@ export class AudioEngine {
   /** "close mic" chain: proximity bass, presence, compression (beatboxers cup the mic) */
   private micIn: AudioNode | null = null;
   private micOn = false;
+  /** human vocal timbre filter chain */
+  private timbreIn: BiquadFilterNode | null = null;
+  private tMud: BiquadFilterNode | null = null;
+  private tPresence: BiquadFilterNode | null = null;
+  private tAir: BiquadFilterNode | null = null;
+  private tLowpass: BiquadFilterNode | null = null;
+  private currentTimbreEq: TimbreFilterPreset["eq"] = getTimbreFilter("warm_pop").eq;
   latest: TelemetryMessage | null = null;
   /** performance.now() when `latest` arrived */
   private latestAt = 0;
@@ -99,7 +107,33 @@ export class AudioEngine {
     makeup.gain.value = 2.2;
     shelf.connect(presence).connect(comp).connect(makeup).connect(master);
     this.micIn = shelf;
-    node.connect(this.micOn ? shelf : master);
+
+    // vocal timbre radiation / formant filter chain
+    const tLow = ctx.createBiquadFilter();
+    tLow.type = "lowshelf";
+    tLow.frequency.value = 220;
+    const tMud = ctx.createBiquadFilter();
+    tMud.type = "peaking";
+    tMud.frequency.value = 750;
+    tMud.Q.value = 1.4;
+    const tPres = ctx.createBiquadFilter();
+    tPres.type = "peaking";
+    tPres.Q.value = 1.1;
+    const tAir = ctx.createBiquadFilter();
+    tAir.type = "highshelf";
+    tAir.frequency.value = 5800;
+    const tLp = ctx.createBiquadFilter();
+    tLp.type = "lowpass";
+    tLp.Q.value = 0.5;
+    tLow.connect(tMud).connect(tPres).connect(tAir).connect(tLp).connect(master);
+    this.timbreIn = tLow;
+    this.tMud = tMud;
+    this.tPresence = tPres;
+    this.tAir = tAir;
+    this.tLowpass = tLp;
+    this.applyTimbreEqNow(this.currentTimbreEq);
+
+    node.connect(this.micOn ? shelf : tLow);
     master.connect(ctx.destination);
     master.connect(analyser);
     master.connect(fast);
@@ -179,13 +213,38 @@ export class AudioEngine {
     this.node?.port.postMessage(m);
   }
 
-  /** Route the voice through the close-mic chain (on) or straight to the output (off). */
+  /** Route the voice through the close-mic chain (on) or the vocal timbre chain (off). */
   setMic(on: boolean): void {
     if (on === this.micOn) return;
     this.micOn = on;
-    if (!this.node || !this.master || !this.micIn) return;
+    if (!this.node || !this.master || !this.micIn || !this.timbreIn) return;
     this.node.disconnect();
-    this.node.connect(on ? this.micIn : this.master);
+    this.node.connect(on ? this.micIn : this.timbreIn);
+  }
+
+  private applyTimbreEqNow(eq: TimbreFilterPreset["eq"]): void {
+    if (!this.timbreIn || !this.tMud || !this.tPresence || !this.tAir || !this.tLowpass) return;
+    this.timbreIn.gain.value = eq.lowShelfDb;
+    this.tMud.gain.value = eq.mudCutDb;
+    this.tPresence.frequency.value = eq.presenceHz;
+    this.tPresence.gain.value = eq.presenceDb;
+    this.tAir.gain.value = eq.airShelfDb;
+    this.tLowpass.frequency.value = eq.lowpassHz;
+  }
+
+  setTimbreEq(eq: TimbreFilterPreset["eq"]): void {
+    this.currentTimbreEq = eq;
+    if (this.ctx && this.timbreIn && this.tMud && this.tPresence && this.tAir && this.tLowpass) {
+      const t = this.ctx.currentTime;
+      this.timbreIn.gain.setTargetAtTime(eq.lowShelfDb, t, 0.025);
+      this.tMud.gain.setTargetAtTime(eq.mudCutDb, t, 0.025);
+      this.tPresence.frequency.setTargetAtTime(eq.presenceHz, t, 0.025);
+      this.tPresence.gain.setTargetAtTime(eq.presenceDb, t, 0.025);
+      this.tAir.gain.setTargetAtTime(eq.airShelfDb, t, 0.025);
+      this.tLowpass.frequency.setTargetAtTime(eq.lowpassHz, t, 0.025);
+    } else {
+      this.applyTimbreEqNow(eq);
+    }
   }
 
   setBeat(m: { steps?: import("../wasm/types.ts").BeatStep[] | (import("../wasm/types.ts").BeatStep | null)[]; bpm?: number; swing?: number; playing?: boolean }): void {

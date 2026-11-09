@@ -125,8 +125,13 @@ impl ArticulatorBank {
                         // of the step, so nasality spread far into neighbouring vowels)
                         tgt += js_min(1.0, b.weight / 2.0) * (b.value - tgt);
                     } else {
+                        let posture_bias = match k {
+                            ArticKey::Larynx | ArticKey::Root => 0.8 * (tgt - NEUTRAL.get(k)),
+                            ArticKey::LipWidth => 0.65 * (tgt - NEUTRAL.get(k)),
+                            _ => 0.0,
+                        };
                         let bw = base_weight;
-                        tgt = (tgt * bw + b.value * b.weight) / (bw + b.weight);
+                        tgt = (tgt * bw + b.value * b.weight) / (bw + b.weight) + posture_bias;
                     }
                     sp *= b.speed;
                 }

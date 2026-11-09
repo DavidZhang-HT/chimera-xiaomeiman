@@ -10,12 +10,19 @@
  * the source finishes rendering. The context leaving "running" (an iOS interruption, the page
  * going to the background), or failing to resume after Play, pauses the transport where it was.
  */
+import { getTimbreFilter, type TimbreFilterPreset } from "../ui/timbre.ts";
+
 export type TransportState = { playing: boolean; time: number; duration: number; epoch: number };
 
 export class Transport {
   readonly ctx: AudioContext;
   private buffer: AudioBuffer | null = null;
   private src: AudioBufferSourceNode | null = null;
+  private tLow: BiquadFilterNode;
+  private tMud: BiquadFilterNode;
+  private tPres: BiquadFilterNode;
+  private tAir: BiquadFilterNode;
+  private tLp: BiquadFilterNode;
   private offset = 0;
   private startedAt = 0;
   private playing = false;
@@ -29,11 +36,39 @@ export class Transport {
 
   constructor(ctx: AudioContext = new AudioContext({ latencyHint: "playback" })) {
     this.ctx = ctx;
+    this.tLow = ctx.createBiquadFilter();
+    this.tLow.type = "lowshelf";
+    this.tLow.frequency.value = 220;
+    this.tMud = ctx.createBiquadFilter();
+    this.tMud.type = "peaking";
+    this.tMud.frequency.value = 750;
+    this.tMud.Q.value = 1.4;
+    this.tPres = ctx.createBiquadFilter();
+    this.tPres.type = "peaking";
+    this.tPres.Q.value = 1.1;
+    this.tAir = ctx.createBiquadFilter();
+    this.tAir.type = "highshelf";
+    this.tAir.frequency.value = 5800;
+    this.tLp = ctx.createBiquadFilter();
+    this.tLp.type = "lowpass";
+    this.tLp.Q.value = 0.5;
+    this.tLow.connect(this.tMud).connect(this.tPres).connect(this.tAir).connect(this.tLp).connect(ctx.destination);
+    this.setTimbreEq(getTimbreFilter("warm_pop").eq);
     this.ctx.onstatechange = () => {
       const running = this.ctx.state === "running";
       if (this.wasRunning && !running && this.playing) this.pause();
       this.wasRunning = running;
     };
+  }
+
+  setTimbreEq(eq: TimbreFilterPreset["eq"]): void {
+    const t = this.ctx.currentTime;
+    this.tLow.gain.setTargetAtTime(eq.lowShelfDb, t, 0.025);
+    this.tMud.gain.setTargetAtTime(eq.mudCutDb, t, 0.025);
+    this.tPres.frequency.setTargetAtTime(eq.presenceHz, t, 0.025);
+    this.tPres.gain.setTargetAtTime(eq.presenceDb, t, 0.025);
+    this.tAir.gain.setTargetAtTime(eq.airShelfDb, t, 0.025);
+    this.tLp.frequency.setTargetAtTime(eq.lowpassHz, t, 0.025);
   }
 
   async load(data: ArrayBuffer): Promise<void> {
@@ -119,7 +154,7 @@ export class Transport {
   private startSource(): void {
     const src = this.ctx.createBufferSource();
     src.buffer = this.buffer;
-    src.connect(this.ctx.destination);
+    src.connect(this.tLow);
     src.onended = () => {
       if (this.src === src) this.rendered = true;
     };

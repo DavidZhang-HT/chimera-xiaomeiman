@@ -20,6 +20,7 @@ import { playDemo, useSing, DEMO_SONGS } from "./singing.ts";
 import type { Mode } from "./store.ts";
 import type { BodyName } from "../worklet/protocol.ts";
 import { bodyLabel, presetOf, PRESETS } from "./body.ts";
+import { TIMBRE_FILTERS, type TimbreFilterId } from "./timbre.ts";
 
 // three.js only loads when the 3D view is first shown
 const AnatomyView3D = lazy(() => import("./components/AnatomyView3D.tsx").then((m) => ({ default: m.AnatomyView3D })));
@@ -38,6 +39,8 @@ function TopBar() {
   const start = useStore((s) => s.start);
   const body = useStore((s) => s.body);
   const setBody = useStore((s) => s.setBody);
+  const timbreFilter = useStore((s) => s.timbreFilter);
+  const setTimbreFilter = useStore((s) => s.setTimbreFilter);
   const volume = useStore((s) => s.volume);
   const setVolume = useStore((s) => s.setVolume);
   const mode = useStore((s) => s.mode);
@@ -84,6 +87,12 @@ function TopBar() {
               { value: "female", label: "女声 Female" },
               { value: "child", label: "童声 Child" },
             ]}
+          />
+          <Segmented<TimbreFilterId>
+            label="Timbre Filter"
+            value={timbreFilter}
+            onChange={(id) => setTimbreFilter(id)}
+            options={TIMBRE_FILTERS.map((f) => ({ value: f.id, label: f.shortLabel }))}
           />
         </div>
       )}
