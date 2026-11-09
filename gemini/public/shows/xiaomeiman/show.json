@@ -1,0 +1,32 @@
+{
+  "title": "小美满 (Xiao Mei Man) · 男声 / 中性 / 女声 / 童声 独立分离版",
+  "audio": "female.wav",
+  "bpm": 60,
+  "downbeat": 0.6,
+  "voices": [
+    {
+      "name": "男声 Male",
+      "audio": "male.wav",
+      "tele": "male.tele",
+      "melody": "melody-male.json"
+    },
+    {
+      "name": "中性 Neutral",
+      "audio": "neutral.wav",
+      "tele": "neutral.tele",
+      "melody": "melody-neutral.json"
+    },
+    {
+      "name": "女声 Female",
+      "audio": "female.wav",
+      "tele": "female.tele",
+      "melody": "melody.json"
+    },
+    {
+      "name": "童声 Child",
+      "audio": "child.wav",
+      "tele": "child.tele",
+      "melody": "melody.json"
+    }
+  ]
+}
