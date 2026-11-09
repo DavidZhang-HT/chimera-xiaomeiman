@@ -39,7 +39,7 @@ export function SourceTimbreControls() {
         <span className="source-timbre-hint" aria-live="polite">{settings.bypass ? "旁路中：使用原声设置" : preset.hint}</span>
         <a href="/timbre-lab/index.html" target="_blank" rel="noreferrer">打开对照试听 ↗</a>
       </div>
-      <p className="source-timbre-note">{replacement ? `${preset.name}：基频升高 ${(replacement.semitones * settings.amount).toFixed(1)} 半音（旁路时不升调），对正在播放的乐谱同样有效。选择时切到${replacement.label}声道；旁路保留该声道。合成音色试验，非真人声纹。` : "调节声带激励；音高、口型和节奏沿用当前设置。"} 旋钮为原始值；3D 舞台预录音不受影响。</p>
+      <p className="source-timbre-note">{replacement ? `${preset.name}：基频升高 ${(replacement.semitones * settings.amount).toFixed(1)} 半音（旁路时不升调），对正在播放的乐谱同样有效。选择时切到${replacement.label}声道；旁路保留该声道。升调与歌曲升降调叠加。合成音色试验，非真人声纹。` : "调节声带激励；音高、口型和节奏沿用当前设置。"} 旋钮为原始值；3D 舞台预录音不受影响。</p>
     </Screen>
   );
 }

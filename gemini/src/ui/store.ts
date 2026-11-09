@@ -276,7 +276,8 @@ export const useStore = create<State>((set, get) => ({
     session++;
     // the new voice starts without the old one's score: a sung note would hang
     if (get().mode === "sing") stopSinging();
-    const f0 = defaultF0(b);
+    // In Sing, body controls resonance only; preserve the baseline used by score blending.
+    const f0 = get().mode === "sing" ? get().source.f0 : defaultF0(b);
     // nor does speech carry over (and the new voice's clock starts again from zero)
     if (get().mode === "speak") stopSpeaking();
     set((s) => ({ body: b, source: { ...s.source, f0 } }));

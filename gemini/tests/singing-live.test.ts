@@ -265,3 +265,87 @@ describe("keys pressed before the audio has started", () => {
     engineStub.scheduleGestures = sg;
   });
 });
+
+describe("song pitch independent of vocal tract", () => {
+  test("every song keeps score pitches across all bodies; explicit transposition preserves timing", async () => {
+    const { DEMO_SONGS } = await import("../src/ui/songs.ts");
+    const bodies = [MALE, {female:0.5,child:0}, {female:1,child:0}, {female:0,child:1}];
+    let score: Gesture[] = [];
+    const original = engineStub.schedule;
+    engineStub.schedule = (plan: {gestures: Gesture[]}) => { score = plan.gestures; return 1; };
+    const pitches = () => score.filter((g) => g.targets.f0 !== undefined);
+    try {
+      for (const song of DEMO_SONGS) {
+        let reference: number[] | null = null;
+        for (const body of bodies) {
+          stopSinging();
+          useSing.getState().setTransposeSemitones(0);
+          await playDemo(song.name, body);
+          const base = pitches();
+          const hz = base.map((g) => g.targets.f0!);
+          expect(hz.length).toBeGreaterThan(0);
+          if (reference) expect(hz).toEqual(reference);
+          else reference = hz;
+          stopSinging();
+          useSing.getState().setTransposeSemitones(7);
+          await playDemo(song.name, body);
+          const raised = pitches();
+          expect(raised.length).toBe(base.length);
+          raised.forEach((g, i) => {
+            expect(g.targets.f0! / base[i].targets.f0!).toBeCloseTo(2 ** (7 / 12), 10);
+            expect(g.t0).toBeCloseTo(base[i].t0, 10);
+            expect(g.t1).toBeCloseTo(base[i].t1, 10);
+          });
+        }
+      }
+    } finally {
+      stopSinging();
+      useSing.getState().setTransposeSemitones(0);
+      engineStub.schedule = original;
+    }
+  });
+
+  test("Sing body switches preserve the base pitch and selected transposition", async () => {
+    const { useStore } = await import("../src/ui/store.ts");
+    const saved = useStore.getState();
+    try {
+      useStore.setState({ mode:"sing", source:{...saved.source,f0:196} });
+      useSing.getState().setTransposeSemitones(-5);
+      for (const body of [MALE, {female:0.5,child:0}, {female:1,child:0}, {female:0,child:1}]) {
+        useStore.getState().setBody(body);
+        expect(useStore.getState().source.f0).toBe(196);
+        expect(useSing.getState().transposeSemitones).toBe(-5);
+      }
+      // The Play mode's existing body-dependent drone pitch is unaffected.
+      useStore.setState({mode:"play"});
+      useStore.getState().setBody(MALE);
+      expect(useStore.getState().source.f0).toBeCloseTo(110);
+    } finally {
+      useStore.setState(saved);
+      useSing.getState().setTransposeSemitones(0);
+    }
+  });
+
+  test("a pending song uses the latest transpose and stop cancels a transpose restart", async () => {
+    let go!: () => void;
+    let score: Gesture[] = [], count=0;
+    const original=engineStub.schedule;
+    engineStub.schedule=(plan: {gestures:Gesture[]})=>{score=plan.gestures; count++; return count;};
+    try {
+      const waiting=playDemo("Twinkle, twinkle",MALE,()=>new Promise<void>(r=>go=r));
+      useSing.getState().setTransposeSemitones(-12);
+      go(); await waiting;
+      expect(score.find(g=>g.targets.f0!==undefined)!.targets.f0!).toBeCloseTo(midiToHz(48),8);
+      useSing.getState().setTransposeSemitones(12);
+      stopSinging();
+      await new Promise(r=>setTimeout(r,0));
+      expect(count).toBe(1);
+      expect(useSing.getState().demo).toBeNull();
+      expect(useSing.getState().pendingDemo).toBeNull();
+    } finally {
+      stopSinging();
+      useSing.getState().setTransposeSemitones(0);
+      engineStub.schedule=original;
+    }
+  });
+});

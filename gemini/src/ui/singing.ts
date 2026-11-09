@@ -12,10 +12,9 @@ import { g2p } from "./speech.ts";
 import { lyricsToSyllables, type Syllable } from "../wasm/engine.ts";
 import { planSong, planNoteOn, planNoteOff, planMelisma } from "../wasm/engine.ts";
 import { EXHALE_LABEL } from "../wasm/engine.ts";
-import { DEMO_SONGS, TWINKLE_FULL } from "./songs.ts";
-import type { DemoSong } from "../wasm/types.ts";
+import { DEMO_SONGS, TWINKLE_FULL, type SingingSong } from "./songs.ts";
 import type { Gesture } from "../wasm/types.ts";
-import { nearestBody, type BodyMix } from "./body.ts";
+import { type BodyMix } from "./body.ts";
 
 /** A note on the piano roll, on the voice clock (s); t1 is null while it is held. */
 export interface RollNote {
@@ -35,6 +34,8 @@ export const DEFAULT_LYRICS = DEMO_SONGS.find((song) => song.name === TWINKLE_FU
 const AH: Syllable = { text: "ah", onset: [], nucleus: { ipa: "ɑ", stress: 1 }, coda: [], wordEnd: true, phraseEnd: false };
 
 interface SingState {
+  transposeSemitones: number;
+  setTransposeSemitones: (semitones: number) => void;
   selectedSong: string;
   setSelectedSong: (name: string) => void;
   pendingDemo: string | null;
@@ -55,6 +56,17 @@ interface SingState {
 }
 
 export const useSing = create<SingState>((set, get) => ({
+  transposeSemitones: 0,
+  setTransposeSemitones: (value) => {
+    if (!Number.isFinite(value)) return;
+    const transposeSemitones = Math.max(-24, Math.min(24, Math.round(value)));
+    if (transposeSemitones === get().transposeSemitones) return;
+    const playing = get().demo;
+    const body = demoRun?.body;
+    set({ transposeSemitones });
+    // A pending start reads the latest value when it schedules; an active score restarts.
+    if (playing && body) void playDemo(playing, body);
+  },
   selectedSong: TWINKLE_FULL,
   setSelectedSong: (name) => {
     const song = DEMO_SONGS.find((song) => song.name === name);
@@ -230,6 +242,7 @@ export function singNoteOff(midi: number, body: BodyMix): void {
 
 interface DemoRun {
   id: number;
+  body: BodyMix;
   /** note start/end times in plan time (s) */
   times: [number, number][];
   midi: number[];
@@ -280,12 +293,10 @@ export async function playDemo(name: string, body: BodyMix, ready?: () => Promis
   }
 }
 
-function scheduleDemo(song: DemoSong, body: BodyMix): void {
+function scheduleDemo(song: SingingSong, body: BodyMix): void {
   const syl = lyricsToSyllables(song.lyrics);
   if (!syl.length) return;
-  const bodyKind = nearestBody(body);
-  const oct = bodyKind === "neutral" ? (song.octave.male + song.octave.female) / 2 : song.octave[bodyKind];
-  const shift = Math.round(oct * 12);
+  const shift = useSing.getState().transposeSemitones;
   const beat = 60 / song.bpm;
   const t0 = 0.6;
   let t = t0;
@@ -327,7 +338,7 @@ function scheduleDemo(song: DemoSong, body: BodyMix): void {
   const parent: number[] = [];
   notes.forEach((n, i) => parent.push(n.syl.melisma && i > 0 ? parent[i - 1] : i));
   const shown = parent.map((p) => written(notes[p].syl));
-  demoRun = { id, times, midi: notes.map((n) => n.midi), text: notes.map((n) => n.syl.text), shown, parent, end, offset: null };
+  demoRun = { id, body: { ...body }, times, midi: notes.map((n) => n.midi), text: notes.map((n) => n.syl.text), shown, parent, end, offset: null };
   useSing.setState({ lyrics: song.lyrics, syllables: syl, cursor: 0, demo: song.name, demoAt: -1 });
 }
 

@@ -11,6 +11,15 @@ try {
   const page = await browser.newPage({viewport:{width:1440,height:1000}});
   page.on("pageerror", e => errors.push(e.message));
   page.on("console", m => { if(m.type()==="error") errors.push(m.text()); });
+  await page.addInitScript(() => {
+    (window as any).__songPlans = [];
+    const post = MessagePort.prototype.postMessage;
+    MessagePort.prototype.postMessage = function (...args: any[]) {
+      const msg = args[0];
+      if (msg?.type === "schedule" && msg.replace) (window as any).__songPlans.push(msg);
+      return Reflect.apply(post, this, args);
+    };
+  });
   await page.goto(url);
   const song = page.getByLabel("选择歌曲",{exact:true});
   const preset = page.getByLabel("仿人声预设",{exact:true});
@@ -36,6 +45,44 @@ try {
   await page.waitForFunction(() => document.querySelectorAll(".syllables .syl").length===42);
   assert.equal(await page.getByRole("radio",{name:"童声 Child",exact:true}).getAttribute("aria-checked"),"true");
   passed.push("One click starts audio and the complete 42-note Twinkle with the child preset");
+  const transpose = page.getByLabel("歌曲升降调", {exact:true});
+  assert.equal(await transpose.inputValue(), "0");
+  const plannedPitches = () => page.evaluate(() => (window as any).__songPlans.at(-1).gestures.filter((g: any) => g.targets.f0 !== undefined).map((g: any) => g.targets.f0));
+  for (const name of await song.locator("option").evaluateAll(options => options.map(o => (o as HTMLOptionElement).value))) {
+    await song.selectOption(name); await play(); await audible();
+    const reference = await plannedPitches();
+    for (const label of ["男声 Male", "中性 Neutral", "女声 Female", "童声 Child"]) {
+      const before = await page.evaluate(() => (window as any).__songPlans.length);
+      await page.getByRole("radio", {name:label,exact:true}).click();
+      await page.waitForFunction(n => (window as any).__songPlans.length > n, before);
+      assert.deepEqual(await plannedPitches(), reference);
+      assert.equal(await transpose.inputValue(), "0");
+      if (name === "Twinkle, twinkle" || name === "小星星 · 完整版（英文）") {
+        await page.waitForFunction((label) => {
+          const e = (window as any).__chimeraEngine;
+          const body = e.latest?.body;
+          const target = label === "男声 Male" ? [0, 0] : label === "中性 Neutral" ? [0.5, 0] : label === "女声 Female" ? [1, 0] : [0, 1];
+          return e.lastPlan?.id === (window as any).__songPlans.at(-1).id && body?.female === target[0] && body?.child === target[1] && e.latest.t.clock - e.lastPlan.t0 > 0.95;
+        }, label);
+        const hz = await page.evaluate(() => (window as any).__chimeraEngine.latest.t.f0);
+        assert(Math.abs(hz / 523.251 - 1) < 0.03, `${name}/${label}: unexpected first-note pitch ${hz}`);
+      }
+    }
+  }
+  passed.push("All four songs keep score pitches across all four vocal tracts; both Twinkle versions retain the same audible first-note pitch");
+  await song.selectOption("Twinkle, twinkle"); await play(); await audible();
+  const unshifted = await plannedPitches();
+  const beforeShift = await page.evaluate(() => (window as any).__songPlans.length);
+  await transpose.selectOption("-12");
+  await page.waitForFunction(n => (window as any).__songPlans.length > n, beforeShift);
+  (await plannedPitches()).forEach((f: number, i: number) => assert(Math.abs(f * 2 - unshifted[i]) < 1e-8));
+  await page.getByRole("radio", {name:"男声 Male",exact:true}).click();
+  await audible();
+  assert.equal(await transpose.inputValue(), "-12");
+  await page.getByRole("button", {name:"还原原调",exact:true}).click();
+  assert.equal(await transpose.inputValue(), "0");
+  passed.push("Independent octave-down control replans the active song and survives a body switch; reset restores the score key");
+  await song.selectOption("小星星 · 完整版（英文）"); await play(); await audible();
   // Every preset applies to the actual singing voice; body-changing presets restart the song.
   for(const id of ["original","warm","airy","clear","husky","female-strong","child-strong"]) {
     await preset.selectOption(id);
