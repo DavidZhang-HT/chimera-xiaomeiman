@@ -5,12 +5,13 @@
  */
 import { describe, expect, test } from "bun:test";
 import { readFileSync, existsSync } from "node:fs";
-import { writeGestures, CONTROL_KEYS, GESTURE_RECORD } from "../src/wasm/wire.ts";
+import { fileURLToPath } from "node:url";
+import { writeGestures, CONTROL_KEYS, GESTURE_RECORD, SOURCE_KEYS as WIRE_SOURCE_KEYS } from "../src/wasm/wire.ts";
 import type { Gesture } from "../src/wasm/types.ts";
 
-const ROOT = new URL("..", import.meta.url).pathname;
-const WASM = `${ROOT}target/wasm32-unknown-unknown/release/chimera_wasm.wasm`;
-const SOURCE_KEYS = ["f0", "glide", "pressure", "breathiness", "tension", "fry", "roughness", "vibratoDepth", "vibratoRate", "drift", "voiced", "brightness"];
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
+const WASM = `${ROOT}src/wasm/chimera.wasm`;
+const SOURCE_KEYS: readonly string[] = WIRE_SOURCE_KEYS;
 
 interface Exports {
   memory: WebAssembly.Memory;

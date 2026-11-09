@@ -145,7 +145,9 @@ describe("Sing mode, live keys", () => {
     engineStub.schedule = (plan: { gestures: Gesture[] }) => (scheduled++, schedule(plan));
     let go!: () => void;
     const waiting = playDemo("Made of air", MALE, () => new Promise<void>((r) => (go = r)));
+    expect(useSing.getState().pendingDemo).toBe("Made of air");
     stopSinging(); // e.g. the mode changed while audio was starting
+    expect(useSing.getState().pendingDemo).toBeNull();
     go();
     await waiting;
     expect(scheduled).toBe(0);
@@ -155,6 +157,35 @@ describe("Sing mode, live keys", () => {
     expect(useSing.getState().demo).toBe("Made of air");
     stopSinging();
     engineStub.schedule = schedule;
+  });
+
+  test("changing songs cancels a pending start without clearing the next request", async () => {
+    voice = new WasmVoice(FS);
+    let first!: () => void, second!: () => void;
+    const a = playDemo("Made of air", MALE, () => new Promise<void>((r) => first = r));
+    useSing.getState().setSelectedSong("Twinkle, twinkle");
+    expect(useSing.getState().lyrics).toBe("Twinkle twinkle little star, how I wonder what you are.");
+    const b = playDemo("Twinkle, twinkle", MALE, () => new Promise<void>((r) => second = r));
+    first();
+    await a;
+    expect(useSing.getState().pendingDemo).toBe("Twinkle, twinkle");
+    expect(useSing.getState().demo).toBeNull();
+    second();
+    await b;
+    expect(useSing.getState().demo).toBe("Twinkle, twinkle");
+    expect(useSing.getState().pendingDemo).toBeNull();
+    stopSinging();
+  });
+
+  test("failed audio startup exposes an error and can be retried", async () => {
+    await playDemo("Made of air", MALE, async () => { throw new Error("Audio unavailable"); });
+    expect(useSing.getState().demoError).toBe("Audio unavailable");
+    expect(useSing.getState().pendingDemo).toBeNull();
+    expect(useSing.getState().demo).toBeNull();
+    await playDemo("Made of air", MALE, async () => {});
+    expect(useSing.getState().demoError).toBeNull();
+    expect(useSing.getState().demo).toBe("Made of air");
+    stopSinging();
   });
 
   test("a quick next note drops the last one's breath-out; leaving Sing cancels a pending ending", () => {

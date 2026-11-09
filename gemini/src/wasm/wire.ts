@@ -1,11 +1,13 @@
 /**
- * The engine's binary gesture records (layout version 1, crates/chimera-wasm/src/lib.rs): how
+ * The engine's binary gesture records (layout version 2, crates/chimera-wasm/src/lib.rs): how
  * gestures cross into the wasm engine on the audio thread, where JSON and TextEncoder are out of
  * reach. 272 little-endian bytes per gesture; NaN marks an absent value.
  */
 import type { Gesture } from "./types.ts";
 
-export const LAYOUT_VERSION = 1;
+export const LAYOUT_VERSION = 2;
+/** Layout v2 appends pitchShiftSemitones; the 272-byte gesture record did not change. */
+export const SOURCE_KEYS = ["f0", "glide", "pressure", "breathiness", "tension", "fry", "roughness", "vibratoDepth", "vibratoRate", "drift", "voiced", "brightness", "pitchShiftSemitones"] as const;
 export const GESTURE_RECORD = 272;
 
 /** Control keys in the engine's order: the 17 articulators, then the source channels. */

@@ -123,6 +123,8 @@ export interface VoiceSource {
   voiced: boolean;
   /** 0 dark … 1 bright (default 0.25: as tension sets it) */
   brightness: number;
+  /** Transpose the final pitch target (including active scores); 0 = bypass. */
+  pitchShiftSemitones: number;
 }
 
 export interface VoiceTelemetry {

@@ -4,6 +4,7 @@
  * for everything that is not real time (planning, G2P, geometry, catalogues).
  * `initChimera()` must resolve before anything calls into the engine (main.tsx awaits it).
  */
+import { LAYOUT_VERSION } from "./wire.ts";
 type Fn = (...a: number[]) => number;
 export interface ChimeraExports {
   memory: WebAssembly.Memory;
@@ -32,7 +33,9 @@ export function initChimera(source?: BufferSource | string): Promise<void> {
       mod = await WebAssembly.compile(await res.arrayBuffer());
     }
     if (WebAssembly.Module.imports(mod).length) throw new Error("engine: the wasm module must not have imports");
-    exports = (await WebAssembly.instantiate(mod, {})).exports as unknown as ChimeraExports;
+    const instance = (await WebAssembly.instantiate(mod, {})).exports as unknown as ChimeraExports;
+    if ((instance.chimera_layout_version as Fn)() !== LAYOUT_VERSION) throw new Error("Rebuild WASM: source ABI version mismatch");
+    exports = instance;
     module = mod;
   })();
   loading.catch(() => (loading = null)); // a failed load may be retried

@@ -2,6 +2,32 @@
 use chimera::voice::human_voice::{HumanVoice, SourcePatch};
 
 #[test]
+fn pitch_replacement_reaches_an_active_score_and_bypasses_without_restarting_it() {
+    use chimera::control::score::{ControlKey, Gesture, Targets};
+    let mut v = HumanVoice::with_defaults(48000.0);
+    v.set_source(&SourcePatch { f0: Some(196.0), ..Default::default() });
+    let mut targets = Targets::default();
+    targets.set(ControlKey::F0, 196.0);
+    targets.set(ControlKey::BREATH, 1.0);
+    v.schedule(&[Gesture::new(0.0, 4.0, 0.02, 0.02, 1.0, targets)]);
+    let mut out = vec![0.0; 24000];
+    v.render(&mut out);
+    let before = v.glottis.params.f0;
+    // JSON exercises backward-compatible source parsing as well as the live control path.
+    let replacement: SourcePatch = serde_json::from_str(r#"{"pitchShiftSemitones":7}"#).unwrap();
+    v.set_source(&replacement);
+    v.render(&mut out);
+    assert!((v.glottis.params.f0 / before - 2.0_f64.powf(7.0 / 12.0)).abs() < 0.001,
+        "active score swallowed the pitch replacement: {} -> {}", before, v.glottis.params.f0);
+    assert!(out.iter().all(|x| x.is_finite() && x.abs() <= 1.0));
+    let bypass: SourcePatch = serde_json::from_str(r#"{"pitchShiftSemitones":0}"#).unwrap();
+    v.set_source(&bypass);
+    v.render(&mut out);
+    assert!((v.glottis.params.f0 - before).abs() < 0.1);
+    assert!(v.score.size() > 0);
+}
+
+#[test]
 fn a_pressed_voice_still_closes_abruptly() {
     // a sung or spoken voice closes softly (tension 0.5-0.55), but the "Pressed" control's top end
     // keeps the abrupt closure of a pressed voice, and the closure sharpens with tension throughout

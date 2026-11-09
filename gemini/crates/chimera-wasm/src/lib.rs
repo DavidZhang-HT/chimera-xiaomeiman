@@ -42,7 +42,7 @@ use chimera::voice::human_voice::{SourcePatch, VoiceTelemetry};
 
 pub const GESTURE_RECORD: usize = 272;
 pub const STEP_RECORD: usize = 48;
-pub const LAYOUT_VERSION: u32 = 1;
+pub const LAYOUT_VERSION: u32 = 2;
 /// Largest `engine_render` request (frames).
 pub const MAX_RENDER: usize = 4096;
 
@@ -235,7 +235,8 @@ pub unsafe extern "C" fn engine_set_artic(h: *mut Handle, tip_free: u32) {
 }
 
 /// Source values in the value area, in this order (NaN: unchanged): f0, glide, pressure,
-/// breathiness, tension, fry, roughness, vibratoDepth, vibratoRate, drift, voiced (0/1), brightness.
+/// breathiness, tension, fry, roughness, vibratoDepth, vibratoRate, drift, voiced (0/1), brightness,
+/// pitchShiftSemitones. Layout v2 appends source slot 12; gesture records are unchanged.
 ///
 /// # Safety
 /// `h` must be a live handle.
@@ -256,6 +257,7 @@ pub unsafe extern "C" fn engine_set_source(h: *mut Handle) {
         drift: opt(v[9]),
         voiced: opt(v[10]).map(|x| x != 0.0),
         brightness: opt(v[11]),
+        pitch_shift_semitones: opt(v[12]),
     };
     h.engine.set_source(&p);
 }

@@ -12,7 +12,8 @@ import { g2p } from "./speech.ts";
 import { lyricsToSyllables, type Syllable } from "../wasm/engine.ts";
 import { planSong, planNoteOn, planNoteOff, planMelisma } from "../wasm/engine.ts";
 import { EXHALE_LABEL } from "../wasm/engine.ts";
-import { DEMO_SONGS } from "../wasm/engine.ts";
+import { DEMO_SONGS, TWINKLE_FULL } from "./songs.ts";
+import type { DemoSong } from "../wasm/types.ts";
 import type { Gesture } from "../wasm/types.ts";
 import { nearestBody, type BodyMix } from "./body.ts";
 
@@ -28,12 +29,16 @@ export interface RollNote {
 /** What the piano roll draws, read every frame (mutated in place: no re-render per note). */
 export const roll: { notes: RollNote[] } = { notes: [] };
 
-export const DEFAULT_LYRICS = DEMO_SONGS[0]?.lyrics ?? "Hello there, I am a voice made of air.";
+export const DEFAULT_LYRICS = DEMO_SONGS.find((song) => song.name === TWINKLE_FULL)!.lyrics;
 
 /** sung when the lyrics are empty */
 const AH: Syllable = { text: "ah", onset: [], nucleus: { ipa: "ɑ", stress: 1 }, coda: [], wordEnd: true, phraseEnd: false };
 
 interface SingState {
+  selectedSong: string;
+  setSelectedSong: (name: string) => void;
+  pendingDemo: string | null;
+  demoError: string | null;
   lyrics: string;
   syllables: Syllable[];
   /** the syllable the next key sings */
@@ -50,6 +55,15 @@ interface SingState {
 }
 
 export const useSing = create<SingState>((set, get) => ({
+  selectedSong: TWINKLE_FULL,
+  setSelectedSong: (name) => {
+    const song = DEMO_SONGS.find((song) => song.name === name);
+    if (!song) return;
+    stopSinging();
+    set({ selectedSong: name, demoError: null, lyrics: song.lyrics, syllables: lyricsToSyllables(song.lyrics), cursor: 0 });
+  },
+  pendingDemo: null,
+  demoError: null,
   lyrics: DEFAULT_LYRICS,
   syllables: lyricsToSyllables(DEFAULT_LYRICS),
   cursor: 0,
@@ -245,13 +259,28 @@ export async function playDemo(name: string, body: BodyMix, ready?: () => Promis
   if (!song) return;
   stopSinging();
   const token = demoToken;
-  await ready?.();
+  useSing.setState({ selectedSong: name, pendingDemo: name, demoError: null });
   try {
-    await g2p.load();
-  } catch {
-    // letter-to-sound rules
+    await ready?.();
+    if (token !== demoToken) return;
+    try {
+      await g2p.load();
+    } catch {
+      // The engine's letter-to-sound rules remain available offline.
+    }
+    if (token !== demoToken) return;
+    scheduleDemo(song, body);
+  } catch (error) {
+    if (token !== demoToken) return;
+    const message = error instanceof Error ? error.message : String(error);
+    useSing.setState({ demoError: message });
+    console.warn(`${new Date().toISOString()} [WARN] [singing] Playback failed: ${message}`);
+  } finally {
+    if (token === demoToken) useSing.setState({ pendingDemo: null });
   }
-  if (token !== demoToken) return;
+}
+
+function scheduleDemo(song: DemoSong, body: BodyMix): void {
   const syl = lyricsToSyllables(song.lyrics);
   if (!syl.length) return;
   const bodyKind = nearestBody(body);
@@ -304,6 +333,7 @@ export async function playDemo(name: string, body: BodyMix, ready?: () => Promis
 
 function stopDemo(): void {
   demoToken++;
+  useSing.setState({ pendingDemo: null });
   const d = demoRun;
   if (!d) return;
   demoRun = null;

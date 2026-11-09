@@ -7,6 +7,7 @@ import { Stroboscope } from "./components/Stroboscope.tsx";
 import { SpectrumView } from "./components/SpectrumView.tsx";
 import { VowelMap } from "./components/VowelMap.tsx";
 import { VoiceControls, VoiceToggles } from "./components/VoiceControls.tsx";
+import { SourceTimbreControls } from "./components/SourceTimbreControls.tsx";
 import { Keys } from "./components/Keys.tsx";
 import { Segmented, Toggle } from "./components/Controls.tsx";
 import { Screen } from "./components/Screen.tsx";
@@ -16,7 +17,7 @@ import { CreatureView } from "./components/CreatureView.tsx";
 import { creatureById } from "../wasm/engine.ts";
 import { BeatboxRight, BeatOverlay, beatInfo, beatSlots } from "./components/BeatboxPanel.tsx";
 import { SingRight, singInfo, singWords } from "./components/SingPanel.tsx";
-import { playDemo, useSing, DEMO_SONGS } from "./singing.ts";
+import { playDemo, useSing } from "./singing.ts";
 import type { Mode } from "./store.ts";
 import type { BodyName } from "../worklet/protocol.ts";
 import { bodyLabel, presetOf, PRESETS } from "./body.ts";
@@ -154,7 +155,7 @@ function StartPrompt() {
         disabled={starting}
         onClick={async () => {
           // the demo waits for audio itself, so a stop meanwhile (body, mode) cancels it
-          if (mode === "sing") return void playDemo(DEMO_SONGS[0].name, useStore.getState().body, start);
+          if (mode === "sing") return void playDemo(useSing.getState().selectedSong, useStore.getState().body, start);
           await start();
           const first = creatureById(creature)?.calls[0];
           if (mode === "bestiary" && first) playCall(first.id);
@@ -235,7 +236,10 @@ function Wall() {
   const mode = useStore((s) => s.mode);
   return (
     <div className={`app mode-${mode}`}>
-      <TopBar />
+      <div className="voice-header">
+        <TopBar />
+        {mode !== "bestiary" && <SourceTimbreControls />}
+      </div>
       <main className={`wall wall-${mode}`}>
         <LeftScreen />
         {mode === "play" ? <PlayRight /> : mode === "speak" ? <SpeakRight /> : mode === "sing" ? <SingRight /> : mode === "beatbox" ? <BeatboxRight /> : <BestiaryRight />}

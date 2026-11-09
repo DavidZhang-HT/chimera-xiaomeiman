@@ -12,6 +12,7 @@ mkdirSync(outDir, { recursive: true });
 
 const browser = await chromium.launch({
   headless: true,
+  executablePath: process.env.CHROME_BIN,
   args: ["--autoplay-policy=no-user-gesture-required", "--use-fake-ui-for-media-stream"],
 });
 const errors: string[] = [];
@@ -25,6 +26,8 @@ async function run(viewport: { width: number; height: number }, tag: string) {
   });
   page.on("pageerror", (e) => errors.push(`[${tag}] pageerror: ${e.message}`));
   await page.goto(url, { waitUntil: "networkidle" });
+  // The reproduction opens in Sing; this smoke scenario explicitly starts with Play.
+  await page.getByRole("radio", { name: "Play", exact: true }).click();
   await page.waitForTimeout(400);
   await page.screenshot({ path: `${outDir}/${tag}-0-idle.png` });
   const startBtn = page.getByRole("button", { name: /breathe in and start/i });

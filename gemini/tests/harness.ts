@@ -3,11 +3,12 @@
  * facade, and runs separate engine instances the way the AudioWorklet does.
  */
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { initChimera } from "../src/wasm/chimera.ts";
-import { writeGestures, fromUtf8 } from "../src/wasm/wire.ts";
+import { writeGestures, fromUtf8, SOURCE_KEYS } from "../src/wasm/wire.ts";
 import type { Gesture } from "../src/wasm/types.ts";
 
-export const WASM_PATH = new URL("../src/wasm/chimera.wasm", import.meta.url).pathname;
+export const WASM_PATH = fileURLToPath(new URL("../src/wasm/chimera.wasm", import.meta.url));
 const bytes = readFileSync(WASM_PATH);
 export const wasmModule = new WebAssembly.Module(bytes);
 
@@ -45,7 +46,7 @@ export class WasmVoice {
   }
   /** Source values by name (crates/chimera-wasm engine_set_source order). */
   setSource(values: Record<string, number | boolean>): void {
-    const keys = ["f0", "glide", "pressure", "breathiness", "tension", "fry", "roughness", "vibratoDepth", "vibratoRate", "drift", "voiced", "brightness"];
+    const keys: readonly string[] = SOURCE_KEYS;
     const v = new Float64Array(this.x.memory.buffer, this.x.engine_values(this.h), 32).fill(NaN);
     for (const [k, val] of Object.entries(values)) v[keys.indexOf(k)] = typeof val === "boolean" ? (val ? 1 : 0) : val;
     this.x.engine_set_source(this.h);

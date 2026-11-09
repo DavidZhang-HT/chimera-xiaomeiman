@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { engine } from "../audio/AudioEngine.ts";
+import { applySourceTimbre, DEFAULT_TIMBRE, type SourceTimbreSettings } from "../audio/sourceTimbres.ts";
 import { DEFAULT_SOURCE, type VoiceSource } from "../wasm/engine.ts";
 import { NEUTRAL, restTip, type HumanArtic } from "../wasm/engine.ts";
 import { defaultF0, PRESETS, sameBody, type BodyMix } from "./body.ts";
@@ -37,6 +38,8 @@ interface State {
   /** the body shown; while the body pad is dragged it runs ahead of the voice (see previewBody) */
   body: BodyMix;
   source: VoiceSource;
+  sourceTimbre: SourceTimbreSettings;
+  setSourceTimbre: (v: Partial<SourceTimbreSettings>) => void;
   artic: HumanArtic;
   tipFree: boolean;
   volume: number;
@@ -123,6 +126,12 @@ export const useStore = create<State>((set, get) => ({
   startError: null,
   body: PRESETS.child,
   source: { ...DEFAULT_SOURCE, f0: defaultF0(PRESETS.child) },
+  sourceTimbre: { ...DEFAULT_TIMBRE },
+  setSourceTimbre: (v) => {
+    set((s) => ({ sourceTimbre: { ...s.sourceTimbre, ...v } }));
+    const s = get();
+    engine.setSource(applySourceTimbre(s.source, s.sourceTimbre));
+  },
   artic: (() => {
     const tip = restTip(NEUTRAL.jaw, NEUTRAL.tbX, NEUTRAL.tbY);
     return { ...NEUTRAL, ttX: tip.x, ttY: tip.y };
@@ -246,7 +255,7 @@ export const useStore = create<State>((set, get) => ({
         const s = get();
         engine.setVolume(s.volume);
         if (!sameBody(s.body, PRESETS.male)) engine.setBody(s.body);
-        engine.setSource(s.source);
+        engine.setSource(applySourceTimbre(s.source, s.sourceTimbre));
         engine.setArtic(s.artic, s.tipFree);
         if (s.mode === "bestiary") engine.setCreature(s.creature, s.cparams[s.creature]);
         if (s.mode === "beatbox") {
@@ -272,11 +281,15 @@ export const useStore = create<State>((set, get) => ({
     if (get().mode === "speak") stopSpeaking();
     set((s) => ({ body: b, source: { ...s.source, f0 } }));
     engine.setBody(b);
+    // Flush the effective source after a body rebuild, including a pending preset change.
+    const s = get();
+    engine.setSource(applySourceTimbre(s.source, s.sourceTimbre));
   },
   previewBody: (b) => set({ body: b }),
   setSource: (v) => {
     set((s) => ({ source: { ...s.source, ...v } }));
-    engine.setSource(v);
+    const s = get();
+    engine.setSource(applySourceTimbre(s.source, s.sourceTimbre));
   },
   setArtic: (v, tipFree) => {
     set((s) => ({ artic: { ...s.artic, ...v }, tipFree: tipFree ?? s.tipFree }));

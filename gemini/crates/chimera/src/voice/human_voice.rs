@@ -40,13 +40,16 @@ pub struct VoiceSource {
     /// the model can, so there is little room to darken and a lot to brighten.
     #[serde(default = "default_brightness")]
     pub brightness: f64,
+    /// Global transposition AFTER score/base pitch blending, in semitones. Zero is bypass.
+    #[serde(default)]
+    pub pitch_shift_semitones: f64,
 }
 
 fn default_brightness() -> f64 {
     DEFAULT_SOURCE.brightness
 }
 
-pub const DEFAULT_SOURCE: VoiceSource = VoiceSource { f0: 110.0, glide: 0.06, pressure: 8.0, breathiness: 0.15, tension: 0.5, fry: 0.0, roughness: 0.1, vibrato_depth: 0.0, vibrato_rate: 6.0, drift: 5.0, voiced: true, brightness: 0.25 };
+pub const DEFAULT_SOURCE: VoiceSource = VoiceSource { f0: 110.0, glide: 0.06, pressure: 8.0, breathiness: 0.15, tension: 0.5, fry: 0.0, roughness: 0.1, vibrato_depth: 0.0, vibrato_rate: 6.0, drift: 5.0, voiced: true, brightness: 0.25, pitch_shift_semitones: 0.0 };
 
 /// `Partial<VoiceSource>`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -76,6 +79,8 @@ pub struct SourcePatch {
     pub voiced: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub brightness: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pitch_shift_semitones: Option<f64>,
 }
 
 impl SourcePatch {
@@ -87,13 +92,13 @@ impl SourcePatch {
         macro_rules! set {
             ($($f:ident),*) => { $( if let Some(x) = self.$f { s.$f = x; } )* };
         }
-        set!(f0, glide, pressure, breathiness, tension, fry, roughness, vibrato_depth, vibrato_rate, drift, voiced, brightness);
+        set!(f0, glide, pressure, breathiness, tension, fry, roughness, vibrato_depth, vibrato_rate, drift, voiced, brightness, pitch_shift_semitones);
     }
     pub fn merge(&mut self, o: &SourcePatch) {
         macro_rules! set {
             ($($f:ident),*) => { $( if o.$f.is_some() { self.$f = o.$f; } )* };
         }
-        set!(f0, glide, pressure, breathiness, tension, fry, roughness, vibrato_depth, vibrato_rate, drift, voiced, brightness);
+        set!(f0, glide, pressure, breathiness, tension, fry, roughness, vibrato_depth, vibrato_rate, drift, voiced, brightness, pitch_shift_semitones);
     }
     pub fn from_source(s: &VoiceSource) -> Self {
         SourcePatch {
@@ -109,6 +114,7 @@ impl SourcePatch {
             drift: Some(s.drift),
             voiced: Some(s.voiced),
             brightness: Some(s.brightness),
+            pitch_shift_semitones: Some(s.pitch_shift_semitones),
         }
     }
 }
@@ -166,6 +172,7 @@ pub struct HumanVoice {
     p_lung_now: f64,
     p_lung_step: f64,
     f0: f64,
+    pitch_ratio: f64,
     pub output_gain: f64,
     dc_x: f64,
     dc_y: f64,
@@ -223,6 +230,7 @@ impl HumanVoice {
             p_lung_now: 0.0,
             p_lung_step: 0.0,
             f0: DEFAULT_SOURCE.f0,
+            pitch_ratio: 1.0,
             output_gain: 5.5e-7,
             dc_x: 0.0,
             dc_y: 0.0,
@@ -306,6 +314,9 @@ impl HumanVoice {
     }
 
     fn apply_source(&mut self) {
+        let shift = self.source.pitch_shift_semitones;
+        self.source.pitch_shift_semitones = if shift.is_finite() { clamp(shift, -24.0, 24.0) } else { 0.0 };
+        self.pitch_ratio = pow(2.0, self.source.pitch_shift_semitones / 12.0);
         let s = self.source;
         let g = &mut self.glottis.params;
         let k2 = self.airway.body.scale * self.airway.body.scale;
@@ -496,6 +507,11 @@ impl HumanVoice {
         // gives wider, sharper-closing pulses, as in real phonation, not just more flow
         self.glottis.params.effort = clamp(((self.source.pressure * self.gate).abs() - 3.0) / 10.0, 0.0, 1.0);
         // pitch glide
+        // Apply to the final target, including a currently active sung/spoken score. At zero
+        // bypass the original arithmetic exactly; the existing glide smooths live switching.
+        if self.pitch_ratio != 1.0 {
+            f0_target = clamp(f0_target * self.pitch_ratio, 40.0, 1600.0);
+        }
         let g = js_max(0.002, if self.score_f0.is_some() { 0.03 } else { self.source.glide });
         self.f0 *= pow(f0_target / self.f0, 1.0 - exp(-dt / g));
         self.glottis.params.f0 = self.f0;

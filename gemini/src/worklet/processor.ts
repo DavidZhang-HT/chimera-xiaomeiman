@@ -6,7 +6,7 @@
  * telemetry (~60 Hz). If the engine traps (a bug), the processor outputs silence from then on and
  * reports once; the main thread may build a new node, which restarts playback state.
  */
-import { writeGestures, writeSteps, fromUtf8, utf8, CONTROL_KEYS } from "../wasm/wire.ts";
+import { writeGestures, writeSteps, fromUtf8, utf8, CONTROL_KEYS, SOURCE_KEYS, LAYOUT_VERSION } from "../wasm/wire.ts";
 import type { ToWorklet, FromWorklet, TelemetryMessage } from "./protocol.ts";
 import type { BodyMix, CreatureTelemetry } from "../wasm/types.ts";
 
@@ -22,7 +22,6 @@ type Fn = (...a: number[]) => number;
 type Exports = { memory: WebAssembly.Memory } & Record<string, Fn>;
 
 const ARTIC_KEYS = CONTROL_KEYS.slice(0, 17);
-const SOURCE_KEYS = ["f0", "glide", "pressure", "breathiness", "tension", "fry", "roughness", "vibratoDepth", "vibratoRate", "drift", "voiced", "brightness"];
 /** scalars at the head of the human telemetry block (crates/chimera-wasm/src/lib.rs) */
 const TELE_HEADER = 16;
 /** gestures taken from one schedule message */
@@ -49,6 +48,7 @@ class ChimeraProcessor extends AudioWorkletProcessor {
   constructor(options: { processorOptions: { module: WebAssembly.Module } }) {
     super();
     this.x = new WebAssembly.Instance(options.processorOptions.module, {}).exports as unknown as Exports;
+    if (this.x.chimera_layout_version() !== LAYOUT_VERSION) throw new Error("Rebuild WASM: source ABI version mismatch");
     this.h = this.x.engine_new(sampleRate);
     this.port.onmessage = (e: MessageEvent<ToWorklet>) => {
       if (this.failed) return;
@@ -121,7 +121,7 @@ class ChimeraProcessor extends AudioWorkletProcessor {
       case "source": {
         const v = this.values();
         for (const [k, val] of Object.entries(m.values)) {
-          const i = SOURCE_KEYS.indexOf(k);
+          const i = SOURCE_KEYS.indexOf(k as typeof SOURCE_KEYS[number]);
           if (i >= 0) v[i] = typeof val === "boolean" ? (val ? 1 : 0) : (val as number);
         }
         x.engine_set_source(h);
