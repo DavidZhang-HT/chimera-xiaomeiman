@@ -67,6 +67,23 @@ try {
     await page.waitForFunction(() => { const engine = (window as any).__chimeraEngine; return Math.abs(engine.latest?.t.f0 - 196) < 2; });
     await page.getByRole("button", { name: "旁路 · 听原声" }).click();
     passed.push("Strong female replacement changes an active score from 196 to 294 Hz, with live bypass back to 196 Hz");
+    await page.getByLabel("仿人声预设", { exact: true }).selectOption("female-ethereal");
+    await page.waitForFunction(() => Math.abs((window as any).sentSources.at(-1)?.brightness - 0.28) < 1e-12);
+    assert.equal(await page.getByRole("radio", {name:"女声 Female",exact:true}).getAttribute("aria-checked"), "true");
+    assert.equal(await page.getByRole("link", {name:/Enya.*官方 MV/}).getAttribute("href"), "https://www.youtube.com/watch?v=LTrk4X9ACtw");
+    await page.waitForFunction(() => Math.abs((window as any).__chimeraEngine.latest?.t.f0 - 293.67) < 3);
+    await page.getByLabel("音色强度", {exact:true}).fill("0.5");
+    await page.waitForFunction(() => Math.abs((window as any).__chimeraEngine.latest?.t.f0 - 196 * 2 ** (3.5 / 12)) < 3);
+    await page.getByRole("button", {name:"旁路 · 听原声"}).click();
+    await page.waitForFunction(() => Math.abs((window as any).__chimeraEngine.latest?.t.f0 - 196) < 2);
+    await page.getByRole("button", {name:"旁路 · 听原声"}).click();
+    await page.getByLabel("音色强度", {exact:true}).fill("1");
+    passed.push("Ethereal female uses the female tract, shares the +7 pitch, supports half strength/bypass and links the official reference");
+    await page.getByRole("radio", {name:"男声 Male",exact:true}).click();
+    await page.getByLabel("仿人声预设", {exact:true}).selectOption("original");
+    await page.getByLabel("仿人声预设", {exact:true}).selectOption("female-ethereal");
+    assert.equal(await page.getByRole("radio", {name:"女声 Female",exact:true}).getAttribute("aria-checked"), "true");
+    passed.push("Selecting ethereal female from a male tract switches to the female tract");
     await page.getByRole("radio", { name: "男声 Male", exact: true }).click();
     await page.getByLabel("仿人声预设", { exact: true }).selectOption("husky");
     await page.getByLabel("仿人声预设", { exact: true }).selectOption("female-strong");
@@ -98,26 +115,28 @@ try {
   assert.equal(await page.getByLabel("仿人声预设", { exact: true }).inputValue(), "husky");
   passed.push("Human timbre selection survives mode changes and is hidden for creatures");
   await page.goto(new URL("/timbre-lab/index.html", url).href);
+  assert.equal(await page.locator("#body").inputValue(), "female");
+  assert.equal(await page.locator("#audio").getAttribute("src"), "female-female-ethereal.wav");
   await page.locator("#audio").evaluate(async (el) => { await (el as HTMLAudioElement).play(); });
   await page.waitForFunction(() => (document.querySelector("audio") as HTMLAudioElement).currentTime > 0.4);
   for (const body of ["male", "neutral", "female", "child"]) {
     await page.locator("#body").selectOption(body);
-    for (const id of ["original", "warm", "airy", "clear", "husky", "female-strong", "pitch-only", "child-strong", "child-pitch-only"]) {
+    for (const id of ["original", "warm", "airy", "clear", "husky", "female-strong", "female-ethereal", "pitch-only", "child-strong", "child-pitch-only"]) {
       await page.locator(`[data-preset="${id}"]`).click();
       await page.waitForFunction((suffix) => { const a = document.querySelector("audio")!; return a.currentSrc.endsWith(suffix) && a.readyState >= 2 && !a.paused && a.currentTime > 0; }, `${body}-${id}.wav`);
     }
   }
-  passed.push("All 36 audition WAVs load and play; track switching retains playback");
-  await page.locator("#body").selectOption("child");
-  await page.locator('[data-preset="child-strong"]').click();
-  await page.waitForFunction(() => { const a = document.querySelector("audio")!; return a.currentSrc.endsWith("child-child-strong.wav") && a.readyState >= 2 && !a.paused; });
+  passed.push("All 40 audition WAVs load and play; track switching retains playback");
+  await page.locator("#body").selectOption("female");
+  await page.locator('[data-preset="female-ethereal"]').click();
+  await page.waitForFunction(() => { const a = document.querySelector("audio")!; return a.currentSrc.endsWith("female-female-ethereal.wav") && a.readyState >= 2 && !a.paused; });
   await page.screenshot({ path: `${out}/lab-desktop.png`, fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
   await page.screenshot({ path: `${out}/lab-mobile.png`, fullPage: true });
   await page.goto(url);
   await page.getByLabel("仿人声预设", { exact: true }).waitFor();
-  await page.getByLabel("仿人声预设", { exact: true }).selectOption("child-strong");
+  await page.getByLabel("仿人声预设", { exact: true }).selectOption("female-ethereal");
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
   await page.screenshot({ path: `${out}/live-mobile.png`, fullPage: true });
   passed.push("Live and audition pages fit a 390px mobile viewport");

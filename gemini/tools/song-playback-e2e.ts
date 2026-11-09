@@ -84,13 +84,13 @@ try {
   passed.push("Independent octave-down control replans the active song and survives a body switch; reset restores the score key");
   await song.selectOption("小星星 · 完整版（英文）"); await play(); await audible();
   // Every preset applies to the actual singing voice; body-changing presets restart the song.
-  for(const id of ["original","warm","airy","clear","husky","female-strong","child-strong"]) {
+  for(const id of ["original","warm","airy","clear","husky","female-strong","female-ethereal","child-strong"]) {
     await preset.selectOption(id);
     await audible();
     assert(await stop.isEnabled());
     assert.equal(await song.inputValue(),"小星星 · 完整版（英文）");
   }
-  passed.push("All seven timbres work during song playback, including female/child tract rebuilds");
+  passed.push("All eight timbres work during song playback, including female/child tract rebuilds");
   await page.getByLabel("音色强度",{exact:true}).fill("0.5");
   await audible();
   await page.getByRole("button",{name:"旁路 · 听原声",exact:true}).click();
@@ -114,6 +114,13 @@ try {
   passed.push("Song and mode switches stop the old performance and preserve song selection");
   await song.selectOption("小星星 · 完整版（英文）");
   await play(); await audible();
+  await transpose.selectOption("-7");
+  await preset.selectOption("female-ethereal");
+  await audible();
+  assert.equal(await transpose.inputValue(), "-7");
+  assert.equal(await page.getByRole("radio", {name:"女声 Female",exact:true}).getAttribute("aria-checked"), "true");
+  assert(await page.getByRole("link", {name:/Enya.*官方 MV/}).isVisible());
+  passed.push("Ethereal female restarts the song on a female tract while preserving the separate -7 song transposition");
   await page.screenshot({path:`${out}/desktop.png`,fullPage:true});
   await page.setViewportSize({width:390,height:844});
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));

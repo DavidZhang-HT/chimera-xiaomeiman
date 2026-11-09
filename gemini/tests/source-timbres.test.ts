@@ -18,7 +18,7 @@ test("bypass and zero intensity recover the exact user's source without accumula
     expect(full.pressure).toBe(9);
     expect(full.fry).toBe(base.fry);
     expect(full.vibratoDepth).toBe(base.vibratoDepth);
-    expect(full.pitchShiftSemitones).toBe(id === "female-strong" ? 7 : id === "child-strong" ? 12 : base.pitchShiftSemitones);
+    expect(full.pitchShiftSemitones).toBe(id === "female-strong" || id === "female-ethereal" ? 7 : id === "child-strong" ? 12 : base.pitchShiftSemitones);
   }
   expect(base.brightness).toBe(0.33);
 });
@@ -44,21 +44,26 @@ test("all four bodies produce finite, audible, distinct source variants; bypass 
   }
 }, 30000);
 
-test("female replacement reaches an already singing WASM voice and bypass restores pitch", () => {
-  const voice = new WasmVoice();
-  const base = { ...DEFAULT_SOURCE, f0: 196 };
-  voice.setSource({ ...base });
-  voice.schedule([{ t0: 0, t1: 3, rampIn: 0.02, rampOut: 0.02, strength: 1, targets: { f0: 196, breath: 1 } }], 0);
-  voice.render(24000);
-  const before = voice.state().f0;
-  voice.setSource({ ...applySourceTimbre(base, { id: "female-strong", amount: 1, bypass: false }) });
-  voice.render(24000);
-  const after = voice.state().f0;
-  expect(Math.abs(after / before - 2 ** (7 / 12))).toBeLessThan(0.01);
-  voice.setSource({ ...applySourceTimbre(base, { id: "female-strong", amount: 1, bypass: true }) });
-  voice.render(24000);
-  expect(Math.abs(voice.state().f0 - before)).toBeLessThan(1);
-  expect(voice.score().length).toBeGreaterThan(0);
+test("both female replacements reach an active score, support half strength and bypass", () => {
+  for (const id of ["female-strong", "female-ethereal"] as const) {
+    const voice = new WasmVoice();
+    const base = { ...DEFAULT_SOURCE, f0: 196 };
+    voice.setSource({ ...base });
+    voice.schedule([{ t0: 0, t1: 3, rampIn: 0.02, rampOut: 0.02, strength: 1, targets: { f0: 196, breath: 1 } }], 0);
+    voice.render(24000);
+    const before = voice.state().f0;
+    voice.setSource({ ...applySourceTimbre(base, { id, amount: 1, bypass: false }) });
+    voice.render(24000);
+    const after = voice.state().f0;
+    expect(Math.abs(after / before - 2 ** (7 / 12))).toBeLessThan(0.01);
+    voice.setSource({ ...applySourceTimbre(base, { id, amount: 1, bypass: true }) });
+    voice.render(24000);
+    expect(Math.abs(voice.state().f0 - before)).toBeLessThan(1);
+    expect(voice.score().length).toBeGreaterThan(0);
+    voice.setSource({ ...applySourceTimbre(base, { id, amount: 0.5, bypass: false }) });
+    voice.render(24000);
+    expect(Math.abs(voice.state().f0 / before - 2 ** (3.5 / 12))).toBeLessThan(0.01);
+  }
 });
 
 test("child replacement doubles an active score, half strength shifts six semitones, bypass restores it", () => {
@@ -85,4 +90,21 @@ test("child profile reduces roughness and fry without accumulating female transp
   expect(child.roughness).toBeCloseTo(0.01, 12);
   expect(applySourceTimbre(base, { id: "child-strong", amount: 1, bypass: true })).toEqual(base);
   expect(base.fry).toBe(0.4);
+});
+
+
+test("ethereal female has a distinct waveform at the same pitch and matched RMS as the existing female", () => {
+  const base = { ...DEFAULT_SOURCE, f0: 196 };
+  const gestures = [{ t0: 0, t1: 0.6, rampIn: 0.04, rampOut: 0.05, strength: 1, targets: { f0: 196, breath: 1 } }];
+  const rms = (xs: Float32Array) => Math.sqrt(xs.reduce((sum, x) => sum + x*x, 0) / xs.length);
+  const renders = (["female-strong", "female-ethereal"] as const).map((id) => {
+    const source = applySourceTimbre(base, { id, amount: 1, bypass: false });
+    expect(source.pitchShiftSemitones).toBe(7);
+    const audio = renderVoice({female:1,child:0}, source, gestures, 0.7);
+    const level = rms(audio);
+    expect(level).toBeGreaterThan(0.001);
+    return audio.map(x => x / level);
+  });
+  const difference = renders[0].map((x, i) => x - renders[1][i]);
+  expect(rms(difference)).toBeGreaterThan(0.01);
 });

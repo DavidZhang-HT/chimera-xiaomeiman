@@ -1,4 +1,4 @@
-import { SOURCE_TIMBRES, strongReplacement, type SourceTimbreId } from "../../audio/sourceTimbres.ts";
+import { SOURCE_TIMBRES, strongReplacement, ETHEREAL_FEMALE_REFERENCE, type SourceTimbreId } from "../../audio/sourceTimbres.ts";
 import { useStore } from "../store.ts";
 import { Screen, Chip } from "./Screen.tsx";
 import { PRESETS, sameBody } from "../body.ts";
@@ -39,6 +39,7 @@ export function SourceTimbreControls() {
         <span className="source-timbre-hint" aria-live="polite">{settings.bypass ? "旁路中：使用原声设置" : preset.hint}</span>
         <a href="/timbre-lab/index.html" target="_blank" rel="noreferrer">打开对照试听 ↗</a>
       </div>
+      {settings.id === "female-ethereal" && <p className="source-timbre-note">参考聆听：<a href={ETHEREAL_FEMALE_REFERENCE.url} target="_blank" rel="noreferrer">{ETHEREAL_FEMALE_REFERENCE.title} 官方 MV ↗</a>。清澈、轻柔的合成音色试验；没有采样或克隆参考录音。可与「女声强替代」同调对比。</p>}
       <p className="source-timbre-note">{replacement ? `${preset.name}：基频升高 ${(replacement.semitones * settings.amount).toFixed(1)} 半音（旁路时不升调），对正在播放的乐谱同样有效。选择时切到${replacement.label}声道；旁路保留该声道。升调与歌曲升降调叠加。合成音色试验，非真人声纹。` : "调节声带激励；音高、口型和节奏沿用当前设置。"} 旋钮为原始值；3D 舞台预录音不受影响。</p>
     </Screen>
   );

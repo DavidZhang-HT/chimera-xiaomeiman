@@ -2,7 +2,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { initChimera } from "../src/wasm/chimera.ts";
-import { applySourceTimbre, DEFAULT_TIMBRE, SOURCE_TIMBRES } from "../src/audio/sourceTimbres.ts";
+import { applySourceTimbre, DEFAULT_TIMBRE, SOURCE_TIMBRES, ETHEREAL_FEMALE_REFERENCE } from "../src/audio/sourceTimbres.ts";
 import { renderVoice } from "./lib/renderVoice.ts";
 import { writeWav } from "./lib/wav.ts";
 import { FFT, hann } from "./lib/fft.ts";
@@ -91,31 +91,32 @@ const report = renders.map(({ audio, ...r }) => {
 });
 writeFileSync(`${outDir}/report.json`, JSON.stringify({
   wasmSha256: createHash("sha256").update(bytes).digest("hex"), sampleRate: FS,
-  comparison: "Same ma mi mu la score/timing, 90 bpm. Original: G3 B3 D4 G3. female-strong and pitch-only: +7 semitones (D4 F#4 A4 D4). child-strong and child-pitch-only: +12 semitones (G4 B4 D5 G4). No EQ/reverb; integrated RMS matching, not perceptual loudness matching. Body selector sets tract geometry independently.",
+  comparison: "Same ma mi mu la score/timing, 90 bpm. Original: G3 B3 D4 G3. female-strong, female-ethereal and pitch-only: +7 semitones (D4 F#4 A4 D4). child-strong and child-pitch-only: +12 semitones (G4 B4 D5 G4). No EQ/reverb; integrated RMS matching, not perceptual loudness matching. Body selector sets tract geometry independently.",
   reference: { title: "Libera — Far Away (Angel Voices)", url: "https://libera.org.uk/music/angel-voices/", usage: "Optional listening reference only; no recording downloaded, analyzed, sampled or cloned. Preset parameters are hand-designed." },
+  femaleReference: { ...ETHEREAL_FEMALE_REFERENCE, usage: "Optional listening reference only; not downloaded, analyzed, sampled or cloned. A hand-designed single-voice preset, not a recreation of the recording." },
   targetRms, renders: report,
 }, null, 2));
 
-const displayOrder = ["original", "child-pitch-only", "child-strong", "female-strong", "pitch-only", "warm", "airy", "clear", "husky"];
-const rows = displayOrder.map((id) => auditions.find((p) => p.id === id)!).map((p, i) => `<button class="preset${p.id === "child-strong" ? " selected" : ""}" data-preset="${p.id}" aria-pressed="${p.id === "child-strong"}"><span class="number">0${i}</span><strong>${p.name}</strong><span>${p.hint}</span></button>`).join("\n");
+const displayOrder = ["original", "pitch-only", "female-strong", "female-ethereal", "child-pitch-only", "child-strong", "warm", "airy", "clear", "husky"];
+const rows = displayOrder.map((id) => auditions.find((p) => p.id === id)!).map((p, i) => `<button class="preset${p.id === "female-ethereal" ? " selected" : ""}" data-preset="${p.id}" aria-pressed="${p.id === "female-ethereal"}"><span class="number">0${i}</span><strong>${p.name}</strong><span>${p.hint}</span></button>`).join("\n");
 writeFileSync(`${outDir}/index.html`, `<!doctype html>
 <html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="icon" href="data:,"><title>声源音色 · 对照试听</title>
 <style>
 :root{color-scheme:light;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;color:#0f172a;background:#f8fafc}*{box-sizing:border-box}body{margin:0}main{max-width:1050px;margin:48px auto;padding:0 24px}a{color:#0284c7}header{display:flex;justify-content:space-between;gap:20px;align-items:baseline}h1{font-size:34px;letter-spacing:-1px;margin:16px 0}p{line-height:1.8;color:#475569}.eyebrow{font-size:12px;letter-spacing:3px;color:#0284c7}.chain{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin:24px 0}.chain span{padding:10px 16px;background:white;border:1px solid #e2e8f0;border-radius:6px}.chain .active{border-color:#0284c7;color:#0284c7}.controls{display:flex;flex-wrap:wrap;gap:18px;align-items:center;padding:20px;background:white;border:1px solid #e2e8f0;border-radius:10px}select,button{font:inherit;color:inherit}select{padding:8px;border:1px solid #cbd5e1;border-radius:6px;background:white}audio{flex:1;min-width:230px;max-width:100%}.presets{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:20px 0}.preset{display:flex;flex-direction:column;text-align:left;gap:14px;background:white;border:1px solid #e2e8f0;border-radius:10px;padding:20px;cursor:pointer;line-height:1.6}.preset.selected{border:2px solid #0284c7;padding:19px;background:#f0f9ff}.preset strong{font-size:20px}.preset span:last-child{font-size:13px;color:#475569}.number{font-size:12px;color:#64748b}#status{font-size:14px}details{border-top:1px solid #e2e8f0;padding:20px 0;margin-top:24px}summary{cursor:pointer}button:focus-visible,select:focus-visible{outline:2px solid #d97706;outline-offset:3px}footer{margin:30px 0;font-size:13px;color:#64748b}@media(max-width:760px){main{margin:24px auto}.presets{grid-template-columns:repeat(2,1fr)}h1{font-size:28px}header{flex-wrap:wrap}.controls{padding:12px}}
 </style>
-<main><header><span class="eyebrow">CHIMERA / SOURCE STUDY 03</span><a href="/">选音色唱歌 ↗</a></header>
-<h1>童音强替代 · 空灵。</h1>
-<p>新增「童音强替代」：升高一个八度，配合童声声道、轻柔闭合、少量气声与稳定声源。<br>建议依次比较「原声 → 只升一个八度 → 童音强替代」。同一发音与节奏，已匹配整段 RMS 电平。</p>
+<main><header><span class="eyebrow">CHIMERA / SOURCE STUDY 04</span><a href="/">选音色唱歌 ↗</a></header>
+<h1>天籁女声强替代。</h1>
+<p>新增「天籁女声强替代」：女性声道、轻柔气声、低粗糙度与稳定声源。<br>建议依次比较「只换基频 → 女声强替代 → 天籁女声强替代」：三者都升高 7 半音，便于分辨音色差异。同一发音与节奏，已匹配整段 RMS 电平。</p>
 <div class="chain" aria-label="音色产生链路"><span>乐谱与发音动作</span>→<span class="active">声带激励 · 本次改变</span>→<span>咽腔 / 口腔 / 鼻腔</span>→<span>唇鼻辐射与输出</span></div>
-<div class="controls"><label>声道体型 <select id="body">${bodies.map((b) => `<option value="${b.id}"${b.id === "child" ? " selected" : ""}>${b.name}</option>`).join("")}</select></label><audio id="audio" controls loop preload="metadata" src="child-child-strong.wav"></audio></div>
-<div class="presets">${rows}</div><p id="status" aria-live="polite">童声 · 童音强替代 · 首音目标约 196 → 392 Hz · 点击播放</p>
+<div class="controls"><label>声道体型 <select id="body">${bodies.map((b) => `<option value="${b.id}"${b.id === "female" ? " selected" : ""}>${b.name}</option>`).join("")}</select></label><audio id="audio" controls loop preload="metadata" src="female-female-ethereal.wav"></audio></div>
+<div class="presets">${rows}</div><p id="status" aria-live="polite">女声 · 天籁女声强替代 · 首音目标约 196 → 294 Hz · 点击播放</p>
 <p>切换预设会保留播放位置。选择「原声」进行 A/B 对比；改变体型则可听声道对音色的影响。</p>
-<details><summary>这个实验能说明什么？</summary><p>这些是合成声源预设，并非真人声纹、真人录音或神经变声。女声强替代升调 7 半音，童音强替代升调 12 半音，都在乐谱音高计算后生效，因此正在唱的音也会变化；它保留旋律音程和时长，但改变调性。试听页声道由体型下拉框控制，默认童声声道；实时界面选中女声或童音强替代时，会自动选择对应声道。温润与清亮主要改变闭合形状；气声改变声门漏气；微沙哑改变周期及振幅微扰。强度在这里固定为 100%，实时界面可连续调节。</p><p>输入端能改变质感，但口型、声道长度、鼻腔耦合、辅音气流与韵律仍决定最终声音。RMS 匹配可减少音量偏差，不等于严格感知响度匹配。音频存在可测差异，并不证明更像真人；自然度仍需听感判断。</p><p>可对照聆听 <a href="https://libera.org.uk/music/angel-voices/" target="_blank" rel="noreferrer">Libera《Far Away》官方曲目页</a>。本预设按清澈、轻柔、低粗糙度的方向手工设计，没有提取、采样或克隆参考录音，也未测量与真人录音的相似度。</p><p>本页是独立试验素材，不会替换《小美满》舞台的预录 WAV。<a href="report.json">查看渲染参数与测量数据</a></p></details>
-<footer>48 kHz / mono WAV · 4 种体型 × 9 组对照 · 同一 WASM 引擎离线渲染</footer></main>
+<details><summary>这个实验能说明什么？</summary><p>这些是合成声源预设，并非真人声纹、真人录音或神经变声。女声强替代与天籁女声强替代都升调 7 半音，童音强替代升调 12 半音，都在乐谱音高计算后生效，因此正在唱的音也会变化；它保留旋律音程和时长，但改变调性。试听页声道由体型下拉框控制，默认女性声道；实时界面选中女声或童音强替代时，会自动选择对应声道。温润与清亮主要改变闭合形状；气声改变声门漏气；微沙哑改变周期及振幅微扰。强度在这里固定为 100%，实时界面可连续调节。</p><p>输入端能改变质感，但口型、声道长度、鼻腔耦合、辅音气流与韵律仍决定最终声音。RMS 匹配可减少音量偏差，不等于严格感知响度匹配。音频存在可测差异，并不证明更像真人；自然度仍需听感判断。</p><p>天籁女声参考：<a href="${ETHEREAL_FEMALE_REFERENCE.url}" target="_blank" rel="noreferrer">${ETHEREAL_FEMALE_REFERENCE.title} 官方 MV</a>。这是手工设计的单声源预设，没有采样、分析或克隆参考录音，也没有重现其录音制作效果。</p><p>童音可对照聆听 <a href="https://libera.org.uk/music/angel-voices/" target="_blank" rel="noreferrer">Libera《Far Away》官方曲目页</a>。本预设按清澈、轻柔、低粗糙度的方向手工设计，没有提取、采样或克隆参考录音，也未测量与真人录音的相似度。</p><p>本页是独立试验素材，不会替换《小美满》舞台的预录 WAV。<a href="report.json">查看渲染参数与测量数据</a></p></details>
+<footer>48 kHz / mono WAV · 4 种体型 × 10 组对照 · 同一 WASM 引擎离线渲染</footer></main>
 <script>
 const audio=document.querySelector('#audio'),body=document.querySelector('#body'),status=document.querySelector('#status');
 const names=${JSON.stringify(Object.fromEntries(auditions.map((p) => [p.id, p.name])))};
-let preset='child-strong',serial=0,pending=null;
+let preset='female-ethereal',serial=0,pending=null;
 async function switchTrack(){
  const request=++serial;
  const state=pending||{time:audio.currentTime,playing:!audio.paused}; pending=state;
